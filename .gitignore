@@ -1,0 +1,7 @@
+.env
+settings.json
+__pycache__/
+build/
+dist/
+*.exe
+*.spec
