@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="app-container">
+    <!-- ========== LEFT PANEL ========== -->
+    <div class="left-panel">
+
+        <!-- Flickr User -->
+        <div class="group">
+            <div class="group-title">Flickr User</div>
+            <div class="form-row">
+                <label for="user-input">Username or URL</label>
+                <input type="text" id="user-input" placeholder="e.g. username or flickr.com/photos/username">
+                <button class="btn btn-sm" id="lookup-btn" onclick="lookupUser()">Look Up</button>
+            </div>
+            <div class="status-text" id="user-status">(optional &ndash; filter by user)</div>
+        </div>
+
+        <!-- Tabs -->
+        <div>
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="interestingness">Interestingness</button>
+                <button class="tab-btn" data-tab="search">Search</button>
+                <button class="tab-btn" data-tab="user-album">User / Album</button>
+            </div>
+            <div class="tab-pane">
+                <!-- Interestingness -->
+                <div class="tab-content active" id="tab-interestingness">
+                    <div class="form-row">
+                        <label for="int-date">Date</label>
+                        <input type="text" id="int-date" value="{{ yesterday }}" style="max-width:140px">
+                        <span class="hint">(YYYY-MM-DD)</span>
+                    </div>
+                    <div class="form-row">
+                        <label for="int-count">Count</label>
+                        <input type="number" id="int-count" value="500" min="1" max="500" style="max-width:100px">
+                    </div>
+                </div>
+
+                <!-- Search -->
+                <div class="tab-content" id="tab-search">
+                    <div class="form-row">
+                        <label for="search-text">Keywords</label>
+                        <input type="text" id="search-text">
+                    </div>
+                    <div class="form-row">
+                        <label for="search-tags">Tags</label>
+                        <input type="text" id="search-tags">
+                    </div>
+                    <div class="form-row">
+                        <label>Tag mode</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="tag-mode" value="any" checked> Any</label>
+                            <label><input type="radio" name="tag-mode" value="all"> All</label>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label for="sort">Sort</label>
+                        <select id="sort">
+                            {% for name in sort_options %}
+                            <option value="{{ sort_options[name] }}"
+                                    {% if name == 'Relevance' %}selected{% endif %}>{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="license">License</label>
+                        <select id="license">
+                            <option value="">Any License</option>
+                            {% for name, ids in license_map.items() %}
+                            <option value="{{ ids }}">{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="search-count">Count</label>
+                        <input type="number" id="search-count" value="100" min="1" max="4000" style="max-width:100px">
+                    </div>
+
+                    <div class="preview-bar" style="margin-top:12px">
+                        <button class="btn btn-sm" id="preview-btn" onclick="startPreview()">Preview</button>
+                        <span class="preview-status" id="preview-status"></span>
+                    </div>
+                    <div class="preview-grid" id="preview-grid"></div>
+                </div>
+
+                <!-- User / Album -->
+                <div class="tab-content" id="tab-user-album">
+                    <div class="form-row">
+                        <label>Mode</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="user-mode" value="photostream" checked
+                                          onchange="onUserModeChange()"> Photostream</label>
+                            <label><input type="radio" name="user-mode" value="album"
+                                          onchange="onUserModeChange()"> Album</label>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label for="album-select">Album</label>
+                        <select id="album-select" disabled></select>
+                    </div>
+                    <div class="form-row">
+                        <label for="user-count">Count</label>
+                        <input type="number" id="user-count" value="500" min="1" max="5000" style="max-width:100px">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Options -->
+        <div class="group">
+            <div class="group-title">Download Options</div>
+            <div class="form-row">
+                <label for="photo-size">Photo size</label>
+                <select id="photo-size">
+                    {% for name, key in photo_sizes.items() %}
+                    <option value="{{ key }}"
+                            {% if name == 'Large 1024' %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-row">
+                <label>&nbsp;</label>
+                <label style="min-width:auto;font-weight:400">
+                    <input type="checkbox" id="embed-metadata" checked>
+                    Embed metadata (title, tags, description)
+                </label>
+            </div>
+            <div class="form-row">
+                <label for="filename-tmpl">Filename</label>
+                <input type="text" id="filename-tmpl" value="{title}_{id}">
+                <span class="hint">({id}, {title}, {owner})</span>
+            </div>
+        </div>
+
+        <!-- Progress + Buttons -->
+        <div class="progress-wrap">
+            <div class="progress-bar-outer">
+                <div class="progress-bar-inner" id="progress-bar"></div>
+            </div>
+            <div class="progress-status" id="progress-status">Ready</div>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-primary" id="download-btn" onclick="startDownload()">Download</button>
+            <button class="btn" id="cancel-btn" onclick="cancelDownload()" disabled>Cancel</button>
+            <span id="download-link-wrap"></span>
+        </div>
+    </div>
+
+    <!-- ========== RIGHT PANEL ========== -->
+    <div class="right-panel">
+        <div class="log-panel">
+            <div class="group">
+                <div class="group-title">Log</div>
+                <div id="log-output"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}

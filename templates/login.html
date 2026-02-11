@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-wrap">
+    <div class="auth-card">
+        <h2>Admin Login</h2>
+        {% if not totp_configured %}
+        <div class="flash info" style="margin:0 0 16px">
+            2FA is not configured yet.
+            <a href="{{ url_for('totp_setup') }}" style="color:var(--accent);font-weight:600">Set up now</a>
+        </div>
+        {% endif %}
+        <form method="POST">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" autofocus required
+                   placeholder="Enter admin password">
+            <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
