@@ -51,10 +51,13 @@ def _get_secret_key():
     and persists it to a temp file so every worker in this deploy reads the
     same value.
     """
-    key = os.environ.get("SECRET_KEY")
+    # 1. Try environment variable
+    key = os.environ.get("SECRET_KEY", "").strip()
     if key:
+        logger.info("Using SECRET_KEY from environment variable")
         return key
 
+    # 2. Try persisted file (so all gunicorn workers share the same key)
     import tempfile
     key_file = os.path.join(tempfile.gettempdir(), ".flickr_dl_secret")
     try:
@@ -63,21 +66,26 @@ def _get_secret_key():
             if key:
                 logger.info("Using persisted secret key from %s", key_file)
                 return key
-    except FileNotFoundError:
+    except Exception:
         pass
 
+    # 3. Generate new key and persist it
     key = os.urandom(32).hex()
     try:
         with open(key_file, "w") as f:
             f.write(key)
         logger.info("Generated and persisted new secret key to %s", key_file)
-    except OSError as e:
+    except Exception as e:
         logger.warning("Could not persist secret key: %s", e)
     return key
 
 
 app = Flask(__name__)
-app.secret_key = _get_secret_key()
+_sk = _get_secret_key()
+app.secret_key = _sk
+# Also set directly in config as belt-and-suspenders
+app.config["SECRET_KEY"] = _sk
+logger.info("Secret key configured: length=%d, truthy=%s", len(_sk), bool(app.secret_key))
 app.permanent_session_lifetime = timedelta(hours=8)
 
 download_manager = DownloadManager()
@@ -86,14 +94,25 @@ logger.info("App initialised — routes registered, download manager started.")
 
 
 @app.before_request
+def _ensure_secret_key():
+    """Ensure the secret key is set before every request."""
+    if not app.secret_key:
+        logger.error("Secret key was empty at request time — regenerating!")
+        emergency_key = _get_secret_key()
+        app.secret_key = emergency_key
+        app.config["SECRET_KEY"] = emergency_key
+
+
+@app.before_request
 def _guard_session():
     """Silently reset corrupt/unreadable session cookies instead of crashing."""
     try:
-        # Accessing session forces Flask to deserialise the cookie.
-        _ = session.get("authenticated")
+        _ = session.get("_fresh_check")
     except Exception:
-        logger.warning("Corrupt session cookie — resetting session")
-        session.clear()
+        logger.warning("Corrupt session cookie — resetting")
+        response = redirect(request.url)
+        response.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+        return response
 
 
 # ====================================================================
@@ -144,7 +163,11 @@ def debug_page():
     checks.append(f"Python: {platform.python_version()}")
     checks.append(f"Platform: {platform.platform()}")
     checks.append(f"Flask: {app.name}")
-    checks.append(f"SECRET_KEY set: {bool(os.environ.get('SECRET_KEY'))}")
+    checks.append(f"SECRET_KEY env var set: {bool(os.environ.get('SECRET_KEY'))}")
+    checks.append(f"SECRET_KEY env var repr: {repr(os.environ.get('SECRET_KEY', ''))[:20]}")
+    checks.append(f"app.secret_key truthy: {bool(app.secret_key)}")
+    checks.append(f"app.secret_key length: {len(app.secret_key) if app.secret_key else 0}")
+    checks.append(f"app.config SECRET_KEY truthy: {bool(app.config.get('SECRET_KEY'))}")
     checks.append(f"ADMIN_PASSWORD set: {bool(os.environ.get('ADMIN_PASSWORD'))}")
     checks.append(f"TOTP_SECRET set: {bool(os.environ.get('TOTP_SECRET'))}")
     checks.append(f"FLICKR_API_KEY set: {bool(os.environ.get('FLICKR_API_KEY'))}")
