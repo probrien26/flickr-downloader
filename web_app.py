@@ -43,13 +43,57 @@ logger = logging.getLogger(__name__)
 # App setup
 # ====================================================================
 
+
+def _get_secret_key():
+    """Return a stable secret key shared across all Gunicorn workers.
+
+    Reads from SECRET_KEY env var first.  If unset, generates a random key
+    and persists it to a temp file so every worker in this deploy reads the
+    same value.
+    """
+    key = os.environ.get("SECRET_KEY")
+    if key:
+        return key
+
+    import tempfile
+    key_file = os.path.join(tempfile.gettempdir(), ".flickr_dl_secret")
+    try:
+        with open(key_file) as f:
+            key = f.read().strip()
+            if key:
+                logger.info("Using persisted secret key from %s", key_file)
+                return key
+    except FileNotFoundError:
+        pass
+
+    key = os.urandom(32).hex()
+    try:
+        with open(key_file, "w") as f:
+            f.write(key)
+        logger.info("Generated and persisted new secret key to %s", key_file)
+    except OSError as e:
+        logger.warning("Could not persist secret key: %s", e)
+    return key
+
+
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", os.urandom(32).hex())
+app.secret_key = _get_secret_key()
 app.permanent_session_lifetime = timedelta(hours=8)
 
 download_manager = DownloadManager()
 
 logger.info("App initialised — routes registered, download manager started.")
+
+
+@app.before_request
+def _guard_session():
+    """Silently reset corrupt/unreadable session cookies instead of crashing."""
+    try:
+        # Accessing session forces Flask to deserialise the cookie.
+        _ = session.get("authenticated")
+    except Exception:
+        logger.warning("Corrupt session cookie — resetting session")
+        session.clear()
 
 
 # ====================================================================
