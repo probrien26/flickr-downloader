@@ -2,8 +2,10 @@
 """Flask web application for the Flickr Photo Downloader."""
 
 import json
+import logging
 import os
 import sys
+import traceback
 from datetime import datetime, timedelta
 from functools import wraps
 from queue import Empty
@@ -28,6 +30,16 @@ from web_auth import (
 from web_download import DownloadManager
 
 # ====================================================================
+# Logging
+# ====================================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# ====================================================================
 # App setup
 # ====================================================================
 
@@ -36,6 +48,39 @@ app.secret_key = os.environ.get("SECRET_KEY", os.urandom(32).hex())
 app.permanent_session_lifetime = timedelta(hours=8)
 
 download_manager = DownloadManager()
+
+logger.info("App initialised — routes registered, download manager started.")
+
+
+# ====================================================================
+# Error handling
+# ====================================================================
+
+@app.errorhandler(500)
+def handle_500(e):
+    logger.exception("Internal Server Error: %s", e)
+    return (
+        "<h1>Internal Server Error</h1>"
+        "<p>Something went wrong. Check the application logs for details.</p>"
+    ), 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logger.exception("Unhandled exception: %s", e)
+    return (
+        "<h1>Internal Server Error</h1>"
+        "<p>Something went wrong. Check the application logs for details.</p>"
+    ), 500
+
+
+# ====================================================================
+# Health check (no auth required)
+# ====================================================================
+
+@app.route("/health")
+def health():
+    return jsonify(status="ok")
 
 
 def _flickr_keys():
