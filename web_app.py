@@ -58,19 +58,28 @@ logger.info("App initialised — routes registered, download manager started.")
 
 @app.errorhandler(500)
 def handle_500(e):
+    tb = traceback.format_exception(type(e), e, e.__traceback__)
+    tb_str = "".join(tb)
     logger.exception("Internal Server Error: %s", e)
+    # Show traceback on page for debugging (remove once stable)
+    from markupsafe import escape
     return (
-        "<h1>Internal Server Error</h1>"
-        "<p>Something went wrong. Check the application logs for details.</p>"
+        f"<h1>Internal Server Error</h1>"
+        f"<pre style='background:#1e1e1e;color:#f8f8f2;padding:16px;"
+        f"overflow:auto;font-size:13px'>{escape(tb_str)}</pre>"
     ), 500
 
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    tb = traceback.format_exception(type(e), e, e.__traceback__)
+    tb_str = "".join(tb)
     logger.exception("Unhandled exception: %s", e)
+    from markupsafe import escape
     return (
-        "<h1>Internal Server Error</h1>"
-        "<p>Something went wrong. Check the application logs for details.</p>"
+        f"<h1>Internal Server Error</h1>"
+        f"<pre style='background:#1e1e1e;color:#f8f8f2;padding:16px;"
+        f"overflow:auto;font-size:13px'>{escape(tb_str)}</pre>"
     ), 500
 
 
