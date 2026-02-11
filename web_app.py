@@ -92,6 +92,49 @@ def health():
     return jsonify(status="ok")
 
 
+@app.route("/debug")
+def debug_page():
+    """Diagnostic page — shows environment info to help debug deploy issues."""
+    import platform
+    checks = []
+    checks.append(f"Python: {platform.python_version()}")
+    checks.append(f"Platform: {platform.platform()}")
+    checks.append(f"Flask: {app.name}")
+    checks.append(f"SECRET_KEY set: {bool(os.environ.get('SECRET_KEY'))}")
+    checks.append(f"ADMIN_PASSWORD set: {bool(os.environ.get('ADMIN_PASSWORD'))}")
+    checks.append(f"TOTP_SECRET set: {bool(os.environ.get('TOTP_SECRET'))}")
+    checks.append(f"FLICKR_API_KEY set: {bool(os.environ.get('FLICKR_API_KEY'))}")
+    checks.append(f"Templates dir: {app.template_folder}")
+    checks.append(f"Templates exist: {os.path.isdir(app.template_folder)}")
+    try:
+        render_template("login.html", totp_configured=False)
+        checks.append("login.html renders: OK")
+    except Exception as e:
+        checks.append(f"login.html renders: FAIL — {e}")
+    try:
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        render_template("index.html", yesterday=yesterday,
+                        photo_sizes=core.PHOTO_SIZES,
+                        sort_options=core.SORT_OPTIONS,
+                        license_map=core.LICENSE_MAP)
+        checks.append("index.html renders: OK")
+    except Exception as e:
+        checks.append(f"index.html renders: FAIL — {e}")
+    try:
+        from web_auth import check_password, is_totp_configured
+        checks.append(f"web_auth import: OK")
+        checks.append(f"is_totp_configured(): {is_totp_configured()}")
+    except Exception as e:
+        checks.append(f"web_auth import: FAIL — {e}")
+    try:
+        from markupsafe import escape
+        checks.append("markupsafe: OK")
+    except Exception as e:
+        checks.append(f"markupsafe: FAIL — {e}")
+    html = "<h2>Debug Info</h2><pre>" + "\n".join(checks) + "</pre>"
+    return html
+
+
 def _flickr_keys():
     """Return (api_key, api_secret) from environment."""
     return (
@@ -119,32 +162,35 @@ def login_required(f):
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if session.get("authenticated"):
-        return redirect(url_for("index"))
-
-    if request.method == "POST":
-        ip = request.remote_addr
-        if is_rate_limited(ip):
-            flash("Too many failed attempts. Try again later.", "error")
-            return render_template("login.html",
-                                   totp_configured=is_totp_configured())
-
-        password = request.form.get("password", "")
-        if check_password(password):
-            reset_attempts(ip)
-            session["password_ok"] = True
-            if is_totp_configured():
-                return redirect(url_for("totp_verify"))
-            # No TOTP configured — grant full access
-            session["authenticated"] = True
-            session.permanent = True
+    try:
+        if session.get("authenticated"):
             return redirect(url_for("index"))
-        else:
-            record_failed_attempt(ip)
-            flash("Invalid password.", "error")
 
-    return render_template("login.html",
-                           totp_configured=is_totp_configured())
+        if request.method == "POST":
+            ip = request.remote_addr
+            if is_rate_limited(ip):
+                flash("Too many failed attempts. Try again later.", "error")
+                return render_template("login.html",
+                                       totp_configured=is_totp_configured())
+
+            password = request.form.get("password", "")
+            if check_password(password):
+                reset_attempts(ip)
+                session["password_ok"] = True
+                if is_totp_configured():
+                    return redirect(url_for("totp_verify"))
+                # No TOTP configured — grant full access
+                session["authenticated"] = True
+                session.permanent = True
+                return redirect(url_for("index"))
+            else:
+                record_failed_attempt(ip)
+                flash("Invalid password.", "error")
+
+        return render_template("login.html",
+                               totp_configured=is_totp_configured())
+    except Exception:
+        return f"<h1>Login Error</h1><pre>{traceback.format_exc()}</pre>", 500
 
 
 @app.route("/totp", methods=["GET", "POST"])
@@ -227,14 +273,17 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    return render_template(
-        "index.html",
-        yesterday=yesterday,
-        photo_sizes=core.PHOTO_SIZES,
-        sort_options=core.SORT_OPTIONS,
-        license_map=core.LICENSE_MAP,
-    )
+    try:
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        return render_template(
+            "index.html",
+            yesterday=yesterday,
+            photo_sizes=core.PHOTO_SIZES,
+            sort_options=core.SORT_OPTIONS,
+            license_map=core.LICENSE_MAP,
+        )
+    except Exception:
+        return f"<h1>Index Error</h1><pre>{traceback.format_exc()}</pre>", 500
 
 
 # ====================================================================
