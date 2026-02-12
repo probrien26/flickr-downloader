@@ -5,8 +5,7 @@
         <h2>Admin Login</h2>
         {% if not totp_configured %}
         <div class="flash info" style="margin:0 0 16px">
-            2FA is not configured yet.
-            <a href="{{ url_for('totp_setup') }}" style="color:var(--accent);font-weight:600">Set up now</a>
+            2FA is not configured yet. Enter your password to begin setup.
         </div>
         {% endif %}
         <form method="POST">

@@ -246,10 +246,8 @@ def login():
                 session["password_ok"] = True
                 if is_totp_configured():
                     return redirect(url_for("totp_verify"))
-                # No TOTP configured — grant full access
-                session["authenticated"] = True
-                session.permanent = True
-                return redirect(url_for("index"))
+                # No TOTP configured — send to 2FA setup first
+                return redirect(url_for("totp_setup"))
             else:
                 record_failed_attempt(ip)
                 flash("Invalid password.", "error")
